@@ -33,6 +33,15 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="ABB.Robotics.Controllers.PC">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\ABB Industrial IT\Robotics IT\SDK\PCSDK 6.08\ABB.Robotics.Controllers.PC.dll</HintPath>
+    </Reference>
+    <Reference Include="GoSdkNet">
+      <HintPath>..\..\..\..\x07-Gocator\SDK\14400-5.1.6.134_SOFTWARE_GO_SDK\GO_SDK\samples\C#\bin\x64\Debug\GoSdkNet.dll</HintPath>
+    </Reference>
+    <Reference Include="kApiNet">
+      <HintPath>..\..\..\..\x07-Gocator\SDK\14400-5.1.6.134_SOFTWARE_GO_SDK\GO_SDK\samples\C#\bin\x64\Debug\kApiNet.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -54,6 +63,9 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <EmbeddedResource Include="Form1.resx">
+      <DependentUpon>Form1.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
