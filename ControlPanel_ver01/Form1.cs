@@ -13,8 +13,10 @@ using ABB.Robotics.Controllers;
 using ABB.Robotics.Controllers.Discovery;
 using ABB.Robotics.Controllers.RapidDomain;
 
+
 namespace ControlPanel_ver01
 {
+
     public partial class Form1 : Form
     {
 
@@ -23,7 +25,10 @@ namespace ControlPanel_ver01
         private RapidData RD_time;
         private Num ABB_Num_time;
         private RobTarget ABB_RT_rt;
-        private Task tRob1;
+        private ABB.Robotics.Controllers.RapidDomain.Task tRob1;
+
+        public ControllerInfoCollection controllers;
+        private bool ABB_Connect_OK = false;
         // EndOf-接收ABB信号需要定义的变量
 
         public Form1()
@@ -43,7 +48,7 @@ namespace ControlPanel_ver01
             // 尝试连接ABB
             NetworkScanner networkScanner = new NetworkScanner();
             networkScanner.Scan();
-            ControllerInfoCollection controllers = networkScanner.Controllers;
+            controllers = networkScanner.Controllers;
             foreach (ControllerInfo info in controllers)
             {
                 ListViewItem item = new ListViewItem("PC");
@@ -51,28 +56,24 @@ namespace ControlPanel_ver01
                 item.SubItems.Add("Detected");
                 item.Tag = info;
                 listView_Log.Items.Add(item);
+                ABB_Connect_OK = true;
             }
         }
 
         private void Btn_Test_Click(object sender, EventArgs e)
         {
-            OpenFileDialog file = new OpenFileDialog();
-            file.InitialDirectory = ".";
-            file.Filter = "所有文件(*.*)|*.*";
-            file.ShowDialog();
-            string pathname = string.Empty;
-            if (file.FileName != string.Empty)
+            // ver02 读取ABB中特定形式的变量-这时需要另外一个窗体
+            foreach (Form fm in Application.OpenForms)
             {
-                try
+                if (fm.Name == "Form_ReadABB_Vars")
                 {
-                    pathname = file.FileName;
-                    Image_res.Load(pathname);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(ex.Message);
+                    fm.WindowState = FormWindowState.Normal;
+                    fm.Activate();
+                    return;
                 }
             }
+            Form fm_ABB = new Form_ReadABB_Vars(this);
+            fm_ABB.Show();
         }
     }
 }

@@ -84,6 +84,7 @@
             this.From,
             this.To,
             this.Brief});
+            this.listView_Log.Dock = System.Windows.Forms.DockStyle.Fill;
             this.listView_Log.Location = new System.Drawing.Point(552, 3);
             this.listView_Log.Name = "listView_Log";
             this.listView_Log.Size = new System.Drawing.Size(245, 374);
