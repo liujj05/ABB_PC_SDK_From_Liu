@@ -74,6 +74,29 @@ namespace ControlPanel_ver01
             }
             Form fm_ABB = new Form_ReadABB_Vars(this);
             fm_ABB.Show();
+
+            // ver2.5 读取出的RobTarget的格式是：
+            // 一个大中括号套着四个小中括号，每个小中括号中又有不同的文字
+            // 我们需要依次提取所有的数字。
+            string str_robTarget = 
+                "[[555,-180.01,659.99],[0.719836,-0.00122566,0.694142,0.00106312],[-1,-1,0,1],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]]";
+            string[] str_rt_split = str_robTarget.Split(new string[] { "],[" }, StringSplitOptions.RemoveEmptyEntries );
+            // 单机器人只要第一、第二段数据就够了
+            string str_pos = str_rt_split[0].Substring(2); // 前两个字符"[["不要
+            string str_rot = str_rt_split[1];
+            string[] str_pos_xyz = str_pos.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] str_rot_qua = str_rot.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            double[] db_pos = new double[3];
+            for (int i=0; i<3; i++)
+            {
+                db_pos[i] = double.Parse(str_pos_xyz[i]);
+            }
+            double[] db_qua = new double[4];
+            for (int i = 0; i < 4; i++)
+            {
+                db_qua[i] = double.Parse(str_rot_qua[i]);
+            }
+            return;
         }
     }
 }
