@@ -22,6 +22,8 @@ using Lmi3d.Zen;
 using Lmi3d.Zen.Io;
 using Lmi3d.GoSdk.Messages;
 
+// 文件读取
+using System.IO;
 
 // 针对对话框，之前不能放别的类
 
@@ -126,40 +128,98 @@ namespace ControlPanel_ver01
 
         private void Btn_Test_Click(object sender, EventArgs e)
         {
-            // ver02 读取ABB中特定形式的变量-这时需要另外一个窗体
-            foreach (Form fm in Application.OpenForms)
+            // 尝试连续发送信息
+            // 读取几个数据文件：
+            
+            // 1. z方向轮廓数据
+            string file_path
+                = @"C:\Users\jiajun\SynologyDrive\005-LeiMu_GangJin\p01-C++\Gocater——data\New_Data\Profile_Z";
+            List<double> db_list_z = new List<double>();
+            if (File.Exists(file_path))
             {
-                if (fm.Name == "Form_ReadABB_Vars")
+                using (StreamReader sr = File.OpenText(file_path))
                 {
-                    fm.WindowState = FormWindowState.Normal;
-                    fm.Activate();
-                    return;
+                    string s = "";
+                    while ((s = sr.ReadLine()) != null)
+                    {
+                        db_list_z.Add(double.Parse(s));
+                    }
                 }
             }
-            Form fm_ABB = new Form_ReadABB_Vars(this);
-            fm_ABB.Show();
+            else
+                return;
 
-            // ver2.5 读取出的RobTarget的格式是：
-            // 一个大中括号套着四个小中括号，每个小中括号中又有不同的文字
-            // 我们需要依次提取所有的数字。
-            string str_robTarget = 
-                "[[555,-180.01,659.99],[0.719836,-0.00122566,0.694142,0.00106312],[-1,-1,0,1],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]]";
-            string[] str_rt_split = str_robTarget.Split(new string[] { "],[" }, StringSplitOptions.RemoveEmptyEntries );
-            // 单机器人只要第一、第二段数据就够了
-            string str_pos = str_rt_split[0].Substring(2); // 前两个字符"[["不要
-            string str_rot = str_rt_split[1];
-            string[] str_pos_xyz = str_pos.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-            string[] str_rot_qua = str_rot.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-            double[] db_pos = new double[3];
-            for (int i=0; i<3; i++)
+            double[] db_zs = db_list_z.ToArray();
+            IntPtr db_ptr = Marshal.AllocHGlobal(db_zs.Length * sizeof(double));
+            Marshal.Copy(db_zs, 0, db_ptr, db_zs.Length);
+            db_zs = null; // 这是释放数组的方法
+
+            ImportFromDLL.COPYDATASTRUCT copydata = new ImportFromDLL.COPYDATASTRUCT();
+            copydata.dwData = 0;
+            copydata.cbData = db_list_z.Count;
+            copydata.lpData = db_ptr.ToInt32();
+            ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
+            
+
+
+            /* 前面发送的已经过不了了，后面的暂时注释
+            // 2. x 方向轮廓数据
+            file_path
+                = @"C:\Users\jiajun\SynologyDrive\005-LeiMu_GangJin\p01-C++\Gocater——data\New_Data\Profile_X";
+            List<double> db_list_x = new List<double>();
+            if (File.Exists(file_path))
             {
-                db_pos[i] = double.Parse(str_pos_xyz[i]);
+                using (StreamReader sr = File.OpenText(file_path))
+                {
+                    string s = "";
+                    while ((s = sr.ReadLine()) != null)
+                    {
+                        db_list_x.Add(double.Parse(s));
+                    }
+                }
             }
-            double[] db_qua = new double[4];
-            for (int i = 0; i < 4; i++)
+            else
+                return;
+
+            double[] db_xs = db_list_x.ToArray();
+            db_ptr = Marshal.AllocHGlobal(db_xs.Length * sizeof(double));
+            Marshal.Copy(db_xs, 0, db_ptr, db_xs.Length);
+            db_xs = null; // 这是释放数组的方法
+            copydata.dwData = 1;
+            copydata.cbData = db_list_x.Count;
+            copydata.lpData = db_ptr.ToInt32();
+            ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
+
+            // 3. 时间戳
+            file_path
+                = @"C:\Users\jiajun\SynologyDrive\005-LeiMu_GangJin\p01-C++\Gocater——data\New_Data\TimeStamp";
+            // 由于 Marshal.Copy 不支持 ulong 类型，故而改用long，在C++端进行类型转换
+            // List<ulong> ulTimeStamp = new List<ulong>();
+            List<long> ulTimeStamp = new List<long>();
+            if (File.Exists(file_path))
             {
-                db_qua[i] = double.Parse(str_rot_qua[i]);
+                using (StreamReader sr = File.OpenText(file_path))
+                {
+                    string s = "";
+                    while ((s = sr.ReadLine()) != null)
+                    {
+                        //ulTimeStamp.Add(ulong.Parse(s));
+                        ulTimeStamp.Add(long.Parse(s));
+                    }
+                }
             }
+            else
+                return;
+            // ulong[] ulong_timestamps = ulTimeStamp.ToArray();
+            long[] ulong_timestamps = ulTimeStamp.ToArray();
+            IntPtr ulong_ptr = Marshal.AllocHGlobal(ulong_timestamps.Length * sizeof(ulong));
+            Marshal.Copy(ulong_timestamps, 0, ulong_ptr, ulong_timestamps.Length);
+            ulong_timestamps = null; // 这是释放数组的方法
+            copydata.dwData = 1;
+            copydata.cbData = ulTimeStamp.Count;
+            copydata.lpData = ulong_ptr.ToInt32();
+            ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
+            */
             return;
         }
 
