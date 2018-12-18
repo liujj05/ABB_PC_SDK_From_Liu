@@ -25,11 +25,14 @@ using Lmi3d.GoSdk.Messages;
 // 文件读取
 using System.IO;
 
+// 内存映射
+using System.IO.MemoryMappedFiles;
+
 // 针对对话框，之前不能放别的类
 
 namespace ControlPanel_ver01
 {
-    public partial class Form1 : Form
+    unsafe public partial class Form1 : Form
     {
         // =========变量定义=========
         // 接收ABB信号需要定义的变量
@@ -41,6 +44,7 @@ namespace ControlPanel_ver01
 
         public ControllerInfoCollection controllers;
         private bool ABB_Connect_OK = false;
+
         // EndOf-接收ABB信号需要定义的变量
 
         // Gocator 通信
@@ -79,7 +83,19 @@ namespace ControlPanel_ver01
         public string strDlgTitle = "CoreAlgorithm"; // 对方窗口
         IntPtr hwndRecvWindow = IntPtr.Zero; // 接收窗口指针
         IntPtr hwndSendWindow = IntPtr.Zero; // 发送窗口指针
+        double[] db_zs;
+        IntPtr db_ptr;
+        double* ptr_db;
+        bool If_Init_WM_COPY = false;
         // =Endof C++通信=
+
+        // 内存映射
+        const string memo_file_name = "data_gc";    // 映射文件名
+        const long memo_capacity = 0x800000;        // 映射段大小
+        MemoryMappedFile mmf;
+        MemoryMappedViewAccessor accessor;
+        bool If_Init_mmf = false;
+        // Endof-内存映射
 
         // =======END of 变量定义=======
         public Form1()
@@ -110,27 +126,64 @@ namespace ControlPanel_ver01
                 ABB_Connect_OK = true;
             }
 
-            // 初始化C++接口
-            hwndRecvWindow = ImportFromDLL.FindWindow(null, strDlgTitle);
-            if (hwndRecvWindow == IntPtr.Zero)
+            // 初始化消息发送
+            if (If_Init_WM_COPY == false)
             {
-                Console.WriteLine("请先启动接收消息程序"); // 这个接口可能要修改，程序需要自动启动
-                return;
+                hwndRecvWindow = ImportFromDLL.FindWindow(null, strDlgTitle);
+                if (hwndRecvWindow == IntPtr.Zero)
+                {
+                    Console.WriteLine("请先启动接收消息程序"); // 这个接口可能要修改，程序需要自动启动
+                    return;
+                }
+                hwndSendWindow = ImportFromDLL.GetForegroundWindow();
+                if (hwndSendWindow == IntPtr.Zero)
+                {
+                    Console.WriteLine("获取自己的窗口句柄失败，请重试");
+                    return;
+                }
+                If_Init_WM_COPY = true;
             }
-            hwndSendWindow = ImportFromDLL.GetForegroundWindow();
-            if (hwndSendWindow == IntPtr.Zero)
-            {
-                Console.WriteLine("获取自己的窗口句柄失败，请重试");
-                return;
-            }
+            // Enfof-初始化消息发送
 
-        }
+            // 初始化内存映射
+            if (If_Init_mmf == false)
+            {
+                try
+                {
+                    mmf = MemoryMappedFile.CreateNew(memo_file_name, memo_capacity);
+                }
+                catch (Exception Memo_e)
+                {
+                    Console.WriteLine("{0} Exception caught.", Memo_e);
+                    return;
+                }
+
+                try
+                {
+                    accessor = mmf.CreateViewAccessor();
+                }
+                catch (Exception Memo_e)
+                {
+                    Console.WriteLine("{0} Exception caught.", Memo_e);
+                    return;
+                }
+                If_Init_mmf = true;
+            }
+            // Endof-初始化内存映射
+
+
+        }// - Endof - Form1Load
 
         private void Btn_Test_Click(object sender, EventArgs e)
         {
             // 尝试连续发送信息
+            Console.WriteLine("##Start of Function\r\n");
+            Console.WriteLine("IntPtr db_ptr = {0}\r\n", db_ptr);
+            Console.WriteLine("IntPtr db_ptr.ToInt64 = 0X{0:X}\r\n", db_ptr.ToInt64());
+            Console.WriteLine("double* ptr_db = 0X{0:X}\r\n", (Int64)ptr_db);
+
             // 读取几个数据文件：
-            
+
             // 1. z方向轮廓数据
             string file_path
                 = @"C:\Users\jiajun\SynologyDrive\005-LeiMu_GangJin\p01-C++\Gocater——data\New_Data\Profile_Z";
@@ -149,17 +202,50 @@ namespace ControlPanel_ver01
             else
                 return;
 
-            double[] db_zs = db_list_z.ToArray();
-            IntPtr db_ptr = Marshal.AllocHGlobal(db_zs.Length * sizeof(double));
-            Marshal.Copy(db_zs, 0, db_ptr, db_zs.Length);
-            db_zs = null; // 这是释放数组的方法
+            // 更改 db_zs的生成方法，不用ToArray，直接分配内存
+            int double_length = db_list_z.Count;
+            db_zs = new double[double_length];
+            int my_db_size = Marshal.SizeOf(db_zs.GetType().GetElementType()) * db_zs.Length;
+            int size_test = db_zs.Length * sizeof(double);
+
+            for (int i=0; i<double_length; i++)
+            {
+                db_zs[i] = db_list_z[i];
+            }
+
+            db_ptr = Marshal.AllocHGlobal(my_db_size);
+            Marshal.Copy(db_zs, 0, db_ptr, double_length);
+            
+
+            // 看一下数组的头尾中间的三组值
+            //Console.WriteLine("db_zs {0}: {1}\r\n", 0, db_zs[0]);
+            //Console.WriteLine("db_zs {0}: {1}\r\n", db_zs.Length / 2, db_zs[db_zs.Length / 2]);
+            //Console.WriteLine("db_zs {0}: {1}\r\n", db_zs.Length-1, db_zs[db_zs.Length -1]);
+
+            unsafe
+            {
+                fixed(double* ptr_db_zs = db_zs)
+                {
+                    ptr_db = ptr_db_zs;
+
+                    
+
+                    
+
+                    Console.WriteLine("##End of Function\r\n");
+                    Console.WriteLine("IntPtr db_ptr = {0}\r\n", db_ptr);
+                    Console.WriteLine("IntPtr db_ptr.ToInt64 = 0X{0:X}\r\n", db_ptr.ToInt64());
+                    Console.WriteLine("double* ptr_db = 0X{0:X}\r\n", (Int64)ptr_db);
+                }
+            }
+
 
             ImportFromDLL.COPYDATASTRUCT copydata = new ImportFromDLL.COPYDATASTRUCT();
-            copydata.dwData = 0;
+            copydata.dwData = IntPtr.Zero;
             copydata.cbData = db_list_z.Count;
-            copydata.lpData = db_ptr.ToInt32();
+            copydata.lpData = db_ptr;
             ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
-            
+
 
 
             /* 前面发送的已经过不了了，后面的暂时注释
@@ -263,11 +349,11 @@ namespace ControlPanel_ver01
             [StructLayout(LayoutKind.Sequential)]
             public struct COPYDATASTRUCT
             {
-                public int dwData;    //not used   
+                public IntPtr dwData;    //not used   
                 public int cbData;    //长度   
                 // [MarshalAs(UnmanagedType.LPStr)] // 例程用
                 // public string lpData; // 例程用
-                public int lpData; // 本程序用
+                public IntPtr lpData; // 本程序用
             }
 
             [DllImport("User32.dll")]
@@ -286,6 +372,13 @@ namespace ControlPanel_ver01
 
             [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
             public static extern IntPtr GetForegroundWindow();
+        }
+
+        private void Form1_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            // 释放资源用
+            accessor.Dispose();
+            mmf.Dispose();
         }
     }
 }
