@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Threading;
 
 // ABB 通信
 using ABB.Robotics.Controllers;
@@ -32,7 +33,7 @@ using System.IO.MemoryMappedFiles;
 
 namespace ControlPanel_ver01
 {
-    unsafe public partial class Form1 : Form
+    public partial class Form1 : Form
     {
         // =========变量定义=========
         // 接收ABB信号需要定义的变量
@@ -85,8 +86,20 @@ namespace ControlPanel_ver01
         IntPtr hwndSendWindow = IntPtr.Zero; // 发送窗口指针
         double[] db_zs;
         IntPtr db_ptr;
-        double* ptr_db;
         bool If_Init_WM_COPY = false;
+
+        // 接收函数
+        bool If_received = false; // 流程控制用，接到C++反馈信息后由接收函数写为true
+        protected override void WndProc(ref Message m)
+        {
+            switch (m.Msg)
+            {
+                case MyMsg.WM_USR_RECEIVED:
+                    If_received = true;
+                    break;
+            }
+            base.WndProc(ref m);
+        }
         // =Endof C++通信=
 
         // 内存映射
@@ -96,6 +109,8 @@ namespace ControlPanel_ver01
         MemoryMappedViewAccessor accessor;
         bool If_Init_mmf = false;
         // Endof-内存映射
+
+
 
         // =======END of 变量定义=======
         public Form1()
@@ -126,24 +141,7 @@ namespace ControlPanel_ver01
                 ABB_Connect_OK = true;
             }
 
-            // 初始化消息发送
-            if (If_Init_WM_COPY == false)
-            {
-                hwndRecvWindow = ImportFromDLL.FindWindow(null, strDlgTitle);
-                if (hwndRecvWindow == IntPtr.Zero)
-                {
-                    Console.WriteLine("请先启动接收消息程序"); // 这个接口可能要修改，程序需要自动启动
-                    return;
-                }
-                hwndSendWindow = ImportFromDLL.GetForegroundWindow();
-                if (hwndSendWindow == IntPtr.Zero)
-                {
-                    Console.WriteLine("获取自己的窗口句柄失败，请重试");
-                    return;
-                }
-                If_Init_WM_COPY = true;
-            }
-            // Enfof-初始化消息发送
+            
 
             // 初始化内存映射
             if (If_Init_mmf == false)
@@ -172,17 +170,35 @@ namespace ControlPanel_ver01
             // Endof-初始化内存映射
 
 
+            
+
+            
+
+            
+
+
         }// - Endof - Form1Load
 
         private void Btn_Test_Click(object sender, EventArgs e)
         {
-            // 尝试连续发送信息
-            Console.WriteLine("##Start of Function\r\n");
-            Console.WriteLine("IntPtr db_ptr = {0}\r\n", db_ptr);
-            Console.WriteLine("IntPtr db_ptr.ToInt64 = 0X{0:X}\r\n", db_ptr.ToInt64());
-            Console.WriteLine("double* ptr_db = 0X{0:X}\r\n", (Int64)ptr_db);
-
-            // 读取几个数据文件：
+            // 初始化消息发送
+            if (If_Init_WM_COPY == false)
+            {
+                hwndRecvWindow = ImportFromDLL.FindWindow(null, strDlgTitle);
+                if (hwndRecvWindow == IntPtr.Zero)
+                {
+                    Console.WriteLine("请先启动接收消息程序"); // 这个接口可能要修改，程序需要自动启动
+                    return;
+                }
+                hwndSendWindow = ImportFromDLL.GetForegroundWindow();
+                if (hwndSendWindow == IntPtr.Zero)
+                {
+                    Console.WriteLine("获取自己的窗口句柄失败，请重试");
+                    return;
+                }
+                If_Init_WM_COPY = true;
+            }
+            // Enfof-初始化消息发送
 
             // 1. z方向轮廓数据
             string file_path
@@ -201,54 +217,28 @@ namespace ControlPanel_ver01
             }
             else
                 return;
+            // 尝试向共享内存中写入数据
+            double[] db_array_z = db_list_z.ToArray();
+            accessor.WriteArray<double>(0, db_array_z, 0, db_array_z.Length);
+            // 向C++发送消息，通知读取
+            If_received = false;
 
-            // 更改 db_zs的生成方法，不用ToArray，直接分配内存
-            int double_length = db_list_z.Count;
-            db_zs = new double[double_length];
-            int my_db_size = Marshal.SizeOf(db_zs.GetType().GetElementType()) * db_zs.Length;
-            int size_test = db_zs.Length * sizeof(double);
-
-            for (int i=0; i<double_length; i++)
-            {
-                db_zs[i] = db_list_z[i];
-            }
-
-            db_ptr = Marshal.AllocHGlobal(my_db_size);
-            Marshal.Copy(db_zs, 0, db_ptr, double_length);
-            
-
-            // 看一下数组的头尾中间的三组值
-            //Console.WriteLine("db_zs {0}: {1}\r\n", 0, db_zs[0]);
-            //Console.WriteLine("db_zs {0}: {1}\r\n", db_zs.Length / 2, db_zs[db_zs.Length / 2]);
-            //Console.WriteLine("db_zs {0}: {1}\r\n", db_zs.Length-1, db_zs[db_zs.Length -1]);
-
-            unsafe
-            {
-                fixed(double* ptr_db_zs = db_zs)
-                {
-                    ptr_db = ptr_db_zs;
-
-                    
-
-                    
-
-                    Console.WriteLine("##End of Function\r\n");
-                    Console.WriteLine("IntPtr db_ptr = {0}\r\n", db_ptr);
-                    Console.WriteLine("IntPtr db_ptr.ToInt64 = 0X{0:X}\r\n", db_ptr.ToInt64());
-                    Console.WriteLine("double* ptr_db = 0X{0:X}\r\n", (Int64)ptr_db);
-                }
-            }
-
-
-            ImportFromDLL.COPYDATASTRUCT copydata = new ImportFromDLL.COPYDATASTRUCT();
-            copydata.dwData = IntPtr.Zero;
-            copydata.cbData = db_list_z.Count;
-            copydata.lpData = db_ptr;
+            ImportFromDLL.COPYDATASTRUCT copydata;
+            copydata.dwData = (IntPtr)1;            // 表明是z
+            copydata.cbData = db_array_z.Length;
+            copydata.lpData = IntPtr.Zero;
             ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
 
+            // 等待C++返回消息，读取完成
 
+            while (If_received == false)
+            {
+                Thread.Sleep(1000);
+                Console.WriteLine("Waiting for received...");
+            }
 
-            /* 前面发送的已经过不了了，后面的暂时注释
+            db_array_z = null;
+
             // 2. x 方向轮廓数据
             file_path
                 = @"C:\Users\jiajun\SynologyDrive\005-LeiMu_GangJin\p01-C++\Gocater——data\New_Data\Profile_X";
@@ -267,21 +257,28 @@ namespace ControlPanel_ver01
             else
                 return;
 
-            double[] db_xs = db_list_x.ToArray();
-            db_ptr = Marshal.AllocHGlobal(db_xs.Length * sizeof(double));
-            Marshal.Copy(db_xs, 0, db_ptr, db_xs.Length);
-            db_xs = null; // 这是释放数组的方法
-            copydata.dwData = 1;
+            double[] db_array_x = db_list_x.ToArray();
+            accessor.WriteArray<double>(0, db_array_x, 0, db_array_x.Length);
+            If_received = false;
+
+            copydata.dwData = (IntPtr)2;            // 表明是x
             copydata.cbData = db_list_x.Count;
-            copydata.lpData = db_ptr.ToInt32();
+            copydata.lpData = IntPtr.Zero;
             ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
+
+            while (If_received == false)
+            {
+                Thread.Sleep(1000);
+                Console.WriteLine("Waiting for received...");
+            }
+
+            db_array_x = null;
 
             // 3. 时间戳
             file_path
                 = @"C:\Users\jiajun\SynologyDrive\005-LeiMu_GangJin\p01-C++\Gocater——data\New_Data\TimeStamp";
-            // 由于 Marshal.Copy 不支持 ulong 类型，故而改用long，在C++端进行类型转换
-            // List<ulong> ulTimeStamp = new List<ulong>();
-            List<long> ulTimeStamp = new List<long>();
+
+            List<ulong> ulTimeStamp = new List<ulong>();
             if (File.Exists(file_path))
             {
                 using (StreamReader sr = File.OpenText(file_path))
@@ -290,22 +287,32 @@ namespace ControlPanel_ver01
                     while ((s = sr.ReadLine()) != null)
                     {
                         //ulTimeStamp.Add(ulong.Parse(s));
-                        ulTimeStamp.Add(long.Parse(s));
+                        ulTimeStamp.Add(ulong.Parse(s));
                     }
                 }
             }
             else
                 return;
-            // ulong[] ulong_timestamps = ulTimeStamp.ToArray();
-            long[] ulong_timestamps = ulTimeStamp.ToArray();
-            IntPtr ulong_ptr = Marshal.AllocHGlobal(ulong_timestamps.Length * sizeof(ulong));
-            Marshal.Copy(ulong_timestamps, 0, ulong_ptr, ulong_timestamps.Length);
-            ulong_timestamps = null; // 这是释放数组的方法
-            copydata.dwData = 1;
+            ulong[] ulong_timestamps = ulTimeStamp.ToArray();
+            accessor.WriteArray<ulong>(0, ulong_timestamps, 0, ulong_timestamps.Length);
+            If_received = false;
+
+
+            copydata.dwData = (IntPtr)3;            // 表明是 time stamp
             copydata.cbData = ulTimeStamp.Count;
-            copydata.lpData = ulong_ptr.ToInt32();
+            copydata.lpData = IntPtr.Zero;
             ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
-            */
+            while (If_received == false)
+            {
+                Thread.Sleep(1000);
+                Console.WriteLine("Waiting for received...");
+            }
+
+            copydata.dwData = (IntPtr)4;            // 表明是 要求退出
+            copydata.cbData = 0;
+            copydata.lpData = IntPtr.Zero;
+            ImportFromDLL.SendMessage(hwndRecvWindow, ImportFromDLL.WM_COPYDATA, hwndSendWindow, ref copydata);
+
             return;
         }
 
@@ -372,6 +379,11 @@ namespace ControlPanel_ver01
 
             [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
             public static extern IntPtr GetForegroundWindow();
+        }
+
+        public class MyMsg
+        {
+            public const int WM_USR_RECEIVED = 0x400 + 2;
         }
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
