@@ -37,6 +37,8 @@ namespace ControlPanel_ver01
     {
         // =========变量定义=========
         // 接收ABB信号需要定义的变量
+        public bool if_ABB_init = false;
+
         private RapidData RD_rt;
         private RapidData RD_time;
         private Num ABB_Num_time;
@@ -49,12 +51,16 @@ namespace ControlPanel_ver01
         // EndOf-接收ABB信号需要定义的变量
 
         // Gocator 通信
-        private const string SENSOR_IP = "192.168.1.10";
-        public GoSystem system;
+        public bool if_Gocator_init = false;
+        public static bool data_watcher = false;
+        private const string SENSOR_IP = "192.168.125.10";
+        public GoSystem GC_system;
         public GoSensor sensor;
-
+        public GoSetup sensor_setup;
         public static void onData(KObject data)
         {
+            data_watcher = false;
+            //timer_MonitorGocator.Enabled = false;
             GoDataSet dataSet = (GoDataSet)data;
             for (UInt32 i = 0; i < dataSet.Count; i++)
             {
@@ -77,6 +83,7 @@ namespace ControlPanel_ver01
             }
             // Refer to example ReceiveRange, ReceiveProfile, ReceiveMeasurement and ReceiveWholePart on how to receive data
             Console.WriteLine(Environment.NewLine);
+            data_watcher = true;
         }
         // Endof-Gocator 通信
 
@@ -84,8 +91,7 @@ namespace ControlPanel_ver01
         public string strDlgTitle = "CoreAlgorithm"; // 对方窗口
         IntPtr hwndRecvWindow = IntPtr.Zero; // 接收窗口指针
         IntPtr hwndSendWindow = IntPtr.Zero; // 发送窗口指针
-        double[] db_zs;
-        IntPtr db_ptr;
+        
         bool If_Init_WM_COPY = false;
 
         // 接收函数
@@ -139,6 +145,7 @@ namespace ControlPanel_ver01
                 item.Tag = info;
                 listView_Log.Items.Add(item);
                 ABB_Connect_OK = true;
+                if_ABB_init = true;
             }
 
             
@@ -152,7 +159,7 @@ namespace ControlPanel_ver01
                 }
                 catch (Exception Memo_e)
                 {
-                    Console.WriteLine("{0} Exception caught.", Memo_e);
+                    Console.WriteLine("Memo File: {0} Exception caught.", Memo_e);
                     return;
                 }
 
@@ -162,19 +169,40 @@ namespace ControlPanel_ver01
                 }
                 catch (Exception Memo_e)
                 {
-                    Console.WriteLine("{0} Exception caught.", Memo_e);
+                    Console.WriteLine("Memo File: {0} Exception caught.", Memo_e);
                     return;
                 }
                 If_Init_mmf = true;
             }
             // Endof-初始化内存映射
 
-
+            // Gocator启动
+            // 进行Gocator初始化的相关工作
+            KApiLib.Construct();
+            GoSdkLib.Construct();
+            GC_system = new GoSystem();
+            KIpAddress ipAddress = KIpAddress.Parse(SENSOR_IP);
+            try
+            {
+                sensor = GC_system.FindSensorByIpAddress(ipAddress);
+            }
+            catch (Exception GC_e)
+            {
+                Console.WriteLine("XX Gocator Error XX : {0} Exception caught.", GC_e);
+                return;
+            }
             
+            sensor.Connect();
+            sensor_setup = sensor.Setup;
+            GC_system.EnableData(true);
+            GC_system.SetDataHandler(onData);
+            if_Gocator_init = true;
+            // Endof-Gocator启动
 
-            
 
-            
+
+
+
 
 
         }// - Endof - Form1Load
@@ -318,34 +346,56 @@ namespace ControlPanel_ver01
 
         private void button_Gocator_Click(object sender, EventArgs e)
         {
-            // 进行Gocator初始化的相关工作
-            KApiLib.Construct();
-            GoSdkLib.Construct();
-            system = new GoSystem();
-            KIpAddress ipAddress = KIpAddress.Parse(SENSOR_IP);
-            sensor = system.FindSensorByIpAddress(ipAddress);
-            GoSetup sensor_setup = sensor.Setup;
-            sensor.Connect();
-            system.EnableData(true);
-            system.SetDataHandler(onData);
+
             // 以下代码需要Debug
-            sensor_setup.TriggerGateEnabled = true; // 设定值
-            bool Trigger_gate_bool_flag1 = false;
-            bool Trigger_gate_bool_flag2 = false;
-            Trigger_gate_bool_flag1 = sensor_setup.TriggerGateEnabledSystemValue; // 读取值1
-            Trigger_gate_bool_flag2 = sensor_setup.TriggerGateEnabledUsed; // 读取值2
+            if (if_Gocator_init)
+            {
+                Console.WriteLine("TriggerGateEnabled is {0}", sensor_setup.TriggerGateEnabled);
+                Console.WriteLine("TriggerGateEnabledSystemValue is {0}", sensor_setup.TriggerGateEnabledSystemValue);
+                Console.WriteLine("TriggerGateEnabledUsed is {0}", sensor_setup.TriggerGateEnabledUsed);
+            }
             // 以上代码需要Debug
-            system.Start(); // Start() 之后，在对话框情况下其实我们可以启动一个定时器去读Gocator的
+            
             
             // 启动定时器 - 以下两个方法等效
-            // timer_MonitorGocator.Enabled = true;
-            timer_MonitorGocator.Start();
+            timer_MonitorGocator.Enabled = true;
+            
+            //timer_MonitorGocator.Start();
         }
 
         private void MonitorGocator_Tick(object sender, EventArgs e)
         {
             // 该函数由定时器配置，周期性执行
-            // 主要功能是查询Gocator是否仍有数据
+            if (data_watcher == true)
+            {
+                // 一旦在 data_watcher 为真的情况下触发了定时器，说明数据采集结束了
+                timer_MonitorGocator.Stop();// 先停掉定时器
+
+                // 初始化消息发送
+                if (If_Init_WM_COPY == false)
+                {
+                    hwndRecvWindow = ImportFromDLL.FindWindow(null, strDlgTitle);
+                    if (hwndRecvWindow == IntPtr.Zero)
+                    {
+                        Console.WriteLine("请先启动接收消息程序"); // 这个接口可能要修改，程序需要自动启动
+                        return;
+                    }
+                    hwndSendWindow = ImportFromDLL.GetForegroundWindow();
+                    if (hwndSendWindow == IntPtr.Zero)
+                    {
+                        Console.WriteLine("获取自己的窗口句柄失败，请重试");
+                        return;
+                    }
+                    If_Init_WM_COPY = true;
+                }
+                // Enfof-初始化消息发送
+                ImportFromDLL.COPYDATASTRUCT test_copydata;
+                test_copydata.dwData = IntPtr.Zero;
+                test_copydata.cbData = 0;
+                test_copydata.lpData = IntPtr.Zero;
+                ImportFromDLL.SendMessage(hwndRecvWindow, MyMsg.WM_USR_TEST, hwndSendWindow, ref test_copydata);
+                
+            }
         }
 
         public class ImportFromDLL
@@ -384,6 +434,7 @@ namespace ControlPanel_ver01
         public class MyMsg
         {
             public const int WM_USR_RECEIVED = 0x400 + 2;
+            public const int WM_USR_TEST = 0x400 + 3; // 测试消息
         }
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
@@ -391,6 +442,12 @@ namespace ControlPanel_ver01
             // 释放资源用
             accessor.Dispose();
             mmf.Dispose();
+
+            // 退出时停止Gocator
+            if (if_Gocator_init)
+            {
+                GC_system.Stop();
+            }
         }
     }
 }

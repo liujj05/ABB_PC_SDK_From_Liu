@@ -121,6 +121,10 @@
             this.button_Gocator.UseVisualStyleBackColor = true;
             this.button_Gocator.Click += new System.EventHandler(this.button_Gocator_Click);
             // 
+            // timer_MonitorGocator
+            // 
+            this.timer_MonitorGocator.Tick += new System.EventHandler(this.MonitorGocator_Tick);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 18F);
